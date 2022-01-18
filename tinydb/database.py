@@ -93,6 +93,7 @@ class TinyDB(TableBase):
         # Prepare the storage
         self._storage: Storage = storage(*args, **kwargs)
 
+        # CO(lk): open status of storage/database
         self._opened = True
         self._tables: Dict[str, Table] = {}
 
@@ -159,6 +160,7 @@ class TinyDB(TableBase):
         # case.
 
         return set(self.storage.read() or {})
+        # CO(lk): set(dict) is equivalent to set(dict.keys())
 
     def drop_tables(self) -> None:
         """

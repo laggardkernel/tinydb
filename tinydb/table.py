@@ -146,6 +146,8 @@ class Table:
         if not isinstance(document, Mapping):
             raise ValueError('Document is not a Mapping')
 
+        # CO(lk): support user customizing doc_id by wrap insertion as a `Document`
+        #  with a `doc_id`. For inserting new item, not updating existing item.
         # First, we get the document ID for the new document
         if isinstance(document, Document):
             # For a `Document` object we use the specified ID
@@ -154,9 +156,12 @@ class Table:
             # We also reset the stored next ID so the next insert won't
             # re-use document IDs by accident when storing an old value
             self._next_id = None
+            # NOTE(lk): reset `_next_id` to recalc `_get_next_id()` by finding the
+            #  max int id. Otherwise, `_get_next_id()` just returns `.next_id + 1`
         else:
             # In all other cases we use the next free ID
             doc_id = self._get_next_id()
+            # CO(lk): return a doc_id and update `._next_id`
 
         # Now, we update the table and add the document
         def updater(table: dict):
@@ -173,6 +178,9 @@ class Table:
         return doc_id
 
     def insert_multiple(self, documents: Iterable[Mapping]) -> List[int]:
+        # TODO(lk): customizing doc_id (set in document) is only supported
+        #  in `insert` but not `insert_multiple`. Seems hard to implement it
+        #  without transaction support.
         """
         Insert multiple documents into the table.
 
@@ -332,11 +340,13 @@ class Table:
 
         # Define the function that will perform the update
         if callable(fields):
+            # CO(lk): callable fields could be pre-defined operations in operations.py
             def perform_update(table, doc_id):
                 # Update documents by calling the update function provided by
                 # the user
                 fields(table[doc_id])
         else:
+            # CO(lk): else the fields is just a dict of field:value
             def perform_update(table, doc_id):
                 # Update documents by setting all fields from the provided data
                 table[doc_id].update(fields)
@@ -371,6 +381,7 @@ class Table:
                 # iteration and doing this without the list conversion would
                 # result in an exception (RuntimeError: dictionary changed size
                 # during iteration)
+                # CO(lk): perform_update() may remove entries from Table.
                 for doc_id in list(table.keys()):
                     # Pass through all documents to find documents matching the
                     # query. Call the processing callback with the document ID
@@ -416,7 +427,11 @@ class Table:
 
         :returns: a list containing the updated document's ID
         """
-
+        # CO(lk):
+        #  db.update_multiple([
+        #      ({'int': 2}, where('char') == 'a'),
+        #      ({'int': 4}, where('char') == 'b'),
+        #  ])
         # Define the function that will perform the update
         def perform_update(fields, table, doc_id):
             if callable(fields):
@@ -470,6 +485,7 @@ class Table:
         Document with a doc_id
         :returns: a list containing the updated documents' IDs
         """
+        # WARN(lk): if no doc_id or cond is provided, all documents will be updated
 
         # Extract doc_id
         if isinstance(document, Document) and hasattr(document, 'doc_id'):
@@ -485,6 +501,7 @@ class Table:
 
         # Perform the update operation
         try:
+            # CO(lk): only one of `doc_ids` > `cond` param will be used for updating
             updated_docs: Optional[List[int]] = self.update(document, cond, doc_ids)
         except KeyError:
             # This happens when a doc_id is specified, but it's missing
@@ -568,6 +585,7 @@ class Table:
 
         # Update the table by resetting all data
         self._update_table(lambda table: table.clear())
+        # CO(lk): argument table is raw_table (dict)
 
         # Reset document ID counter
         self._next_id = None
@@ -731,6 +749,7 @@ class Table:
             str(doc_id): doc
             for doc_id, doc in table.items()
         }
+        # CO(lk): make a new copy of the table
 
         # Write the newly updated data back to the storage
         self._storage.write(tables)

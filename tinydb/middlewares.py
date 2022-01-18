@@ -19,6 +19,7 @@ class Middleware:
         self._storage_cls = storage_cls
         self.storage = None
 
+    # CO(lk): Storage.__init__() -> Middleware.__call__()
     def __call__(self, *args, **kwargs):
         """
         Create the storage instance and store it as self.storage.

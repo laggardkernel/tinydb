@@ -77,12 +77,17 @@ class QueryInstance:
 
     def __init__(self, test: Callable[[Mapping], bool], hashval: Optional[Tuple]):
         self._test = test
+        # CO(lk): hash for query cache. tuple may include logical operator info.
+        #  Value is not important. Used to be differentiated from other query.
         self._hash = hashval
 
     def is_cacheable(self) -> bool:
         return self._hash is not None
 
     def __call__(self, value: Mapping) -> bool:
+        # CO(lk): where('foo') == 2 is cond (callable) in Table.search().
+        #  QueryInstance(lambda, hash) is the cond.
+        #  QueryInstance._test represents where('foo') == 2
         """
         Evaluate the query to check if it matches a specified value.
 
@@ -117,6 +122,8 @@ class QueryInstance:
         else:
             hashval = None
         return QueryInstance(lambda value: self(value) and other(value), hashval)
+        # CO(lk): self(value) fires `self.__call__(value)` -> `self._test(value)`
+        #  equivalent to QueryInstanc1._test(value) and QueryInstance2._test(value)
 
     def __or__(self, other: 'QueryInstance') -> 'QueryInstance':
         # We use a frozenset for the hash as the OR operation is commutative
@@ -196,6 +203,9 @@ class Query(QueryInstance):
 
         # ... and update the query hash
         query._hash = ('path', query._path) if self.is_cacheable() else None
+        # CO(lk): where('attr1') -> Query()['attr1'] -> AnotherQuery
+        #  ._path = ('attr1',)
+        #  ._hash = ('path', ._path) = ('path', ('attr1',))
 
         return query
 
@@ -214,6 +224,8 @@ class Query(QueryInstance):
             self,
             test: Callable[[Any], bool],
             hashval: Tuple,
+            # CO(lk): only used in .fragment(). Cause Query.fragment() but not
+            #  Query.attr.fragment()
             allow_empty_path: bool = False
     ) -> QueryInstance:
         """
@@ -228,10 +240,13 @@ class Query(QueryInstance):
             raise ValueError('Query has no path')
 
         def runner(value):
+            # CO(lk): runner() is QueryInstance._test(), accept doc/value and
+            #  have a test/match.
             try:
                 # Resolve the path
                 for part in self._path:
                     if isinstance(part, str):
+                        # CO(lk): support multiple depth attr like A.b.c
                         value = value[part]
                     else:
                         value = part(value)
@@ -240,6 +255,8 @@ class Query(QueryInstance):
             else:
                 # Perform the specified test
                 return test(value)
+                # CO(lk): value is now a field value of the document.
+                #  test() is the lambda func passed from __eq__: lambda x: x == rhs
 
         return QueryInstance(
             lambda value: runner(value),
@@ -254,6 +271,8 @@ class Query(QueryInstance):
 
         :param rhs: The value to compare against
         """
+        # CO(lk): Query().f1 == 42 -> Query().f1.__eq__(42)
+        #  attr_query.__eq__(42) -> QueryInstance(lambda, hash)
         return self._generate_test(
             lambda value: value == rhs,
             ('==', self._path, freeze(rhs))
@@ -345,6 +364,7 @@ class Query(QueryInstance):
         :param flags: regex flags to pass to ``re.match``
         """
         def test(value):
+            # CO(lk): value is doc.attr (attr stored in `._path`)
             if not isinstance(value, str):
                 return False
 
@@ -478,7 +498,12 @@ class Query(QueryInstance):
         )
 
     def fragment(self, document: Mapping) -> QueryInstance:
+        # CO(lk): only matches part of the fields
+        #  db.search(Query().fragment({'foo': True, 'bar': False}))
+        #  Since Query().fragment() but not Query().attr.fragment(),
+        #  allow_empty_path=True
         def test(value):
+            # CO(lk): value is doc, but not attr
             for key in document:
                 if key not in value or value[key] != document[key]:
                     return False

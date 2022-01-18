@@ -93,7 +93,9 @@ class JSONStorage(Storage):
 
         super().__init__()
 
+        # CO(lk): 'r+' open json file as readable and writable
         self._mode = access_mode
+        # CO(lk): kwargs are for json.dumps()
         self.kwargs = kwargs
 
         # Create the file if it doesn't exist and creating is allowed by the
@@ -111,6 +113,7 @@ class JSONStorage(Storage):
         # Get the file size by moving the cursor to the file end and reading
         # its location
         self._handle.seek(0, os.SEEK_END)
+        # CO(lk): os.SEEK_END 2, seek relative to the file's end.
         size = self._handle.tell()
 
         if not size:
@@ -140,6 +143,10 @@ class JSONStorage(Storage):
         # Ensure the file has been writtens
         self._handle.flush()
         os.fsync(self._handle.fileno())
+        # CO(lk): doc from os.fsync()
+        #  If you’re starting with a buffered Python file object f, first do f.flush(),
+        #  and then do os.fsync(f.fileno()), to ensure that all internal buffers
+        #  associated with f are written to disk.
 
         # Remove data that is behind the new cursor in case the file has
         # gotten shorter

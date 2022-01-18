@@ -91,6 +91,9 @@ class LRUCache(abc.MutableMapping, Generic[K, V]):
         value = self.cache.get(key)
 
         if value is not None:
+            # CO(lk): operate on OrderedDict. last=True means
+            #  it's moved from end to the beginning.
+            #  head <- tail
             self.cache.move_to_end(key, last=True)
 
             return value
@@ -98,6 +101,7 @@ class LRUCache(abc.MutableMapping, Generic[K, V]):
         return default
 
     def set(self, key: K, value: V):
+        # TODO(lk): why don't update the cache if updated
         if self.cache.get(key):
             self.cache.move_to_end(key, last=True)
 
@@ -142,6 +146,7 @@ class FrozenDict(dict):
 
 
 def freeze(obj):
+    # CO(lk): freeze obj and make it hashable for cache key use
     """
     Freeze an object by making it immutable and thus hashable.
     """
